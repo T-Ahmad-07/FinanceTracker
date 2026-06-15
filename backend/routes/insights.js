@@ -42,7 +42,6 @@ router.get('/', authMiddleware, async (req, res) => {
 
     // 3. Initialize Google Generative AI
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Format transaction log for prompt context
     const txSummary = transactions
@@ -63,8 +62,28 @@ Format requirements:
 - Keep each point clear, concise (2-3 sentences max).
 - Jump straight into the insights. No intro like "Sure, here are..." and no outro.`;
 
-    const aiResult = await model.generateContent(prompt);
-    const responseText = aiResult.response.text();
+    let responseText = '';
+    let success = false;
+    // Resilient list of models to try (preferring latest active generations)
+    const modelsToTry = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+    
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`Attempting Gemini generation with model: ${modelName}`);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const aiResult = await model.generateContent(prompt);
+        responseText = aiResult.response.text();
+        success = true;
+        console.log(`Gemini generation succeeded with model: ${modelName}`);
+        break;
+      } catch (modelErr) {
+        console.warn(`Model ${modelName} failed/deprecated:`, modelErr.message);
+      }
+    }
+
+    if (!success) {
+      throw new Error('All Gemini model choices failed or are deprecated.');
+    }
 
     res.json({ insights: responseText, isMock: false });
   } catch (err) {
